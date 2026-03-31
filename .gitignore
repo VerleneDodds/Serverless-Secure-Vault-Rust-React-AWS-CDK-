@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# AWS CDK Output
+cdk.out/
+.cdk.staging/
+
+# Rust / Cargo
+target/
+**/*.rs.bk
+
+# Environment
+.env
+.env.*
+
+# IDEs and Text Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Private Portfolio Setup Scripts
+setup_git.sh
