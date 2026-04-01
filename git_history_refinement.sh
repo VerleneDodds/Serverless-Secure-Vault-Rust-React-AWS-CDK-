@@ -1,9 +1,15 @@
 #!/bin/bash
 
 # Secure Storage Git Lifecycle Management Script
+<<<<<<< HEAD
 # This script creates a fresh, professional history for your portfolio on the 'master' branch.
 
 echo "🚀 Polishing Repository History on branch 'master'..."
+=======
+# This script creates a fresh, professional history for your portfolio.
+
+echo "🚀 Polishing Repository History for Portfolio Presentation..."
+>>>>>>> main
 
 # 1. Start from a clean, orphan branch to rewrite history
 git checkout --orphan portfolio-branch
@@ -27,6 +33,10 @@ git commit -m "feat: implement glassmorphic UI with framer-motion animations and
 git branch -f feature/ui-refinement
 
 echo "🏗️ Committing Phase 4: Reliability & API Fixes..."
+<<<<<<< HEAD
+=======
+# Using --allow-empty since the files are already in their final state from previous commits
+>>>>>>> main
 git commit --allow-empty -m "fix: resolve 403 Forbidden and CORS errors using Proxy+ API Gateway integration"
 git branch -f fix/api-gateway-cors
 
@@ -43,6 +53,7 @@ echo "🏗️ Committing Phase 7: Environment & Tooling..."
 git add .github/ .gitignore bin/ cdk.json tsconfig.json git_history_refinement.sh src/main.rs Cargo.lock package-lock.json
 git commit -m "chore: finalize environment configuration, CI workflows, and deployment tooling"
 
+<<<<<<< HEAD
 # 3. Finalize History into 'master'
 # Check if master exists, if so backup
 if git show-ref --verify --quiet refs/heads/master; then
@@ -55,3 +66,17 @@ git branch -m portfolio-branch master
 echo "✅ Git history completely refined and merged to 'master'!"
 echo "Check your new clean history with 'git log --oneline --graph --all'"
 echo "Existing work was backed up to a 'master-backup-...' branch if it existed."
+=======
+# 3. Finalize History
+# Check if main exists, if so backup
+if git show-ref --verify --quiet refs/heads/main; then
+    git branch -m main main-backup-$(date +%s)
+fi
+
+# Move our polished history to main
+git branch -m portfolio-branch main
+
+echo "✅ Git history completely refined and structured!"
+echo "Check your new clean history with 'git log --oneline --graph --all'"
+echo "Existing work was backed up to a 'main-backup-...' branch."
+>>>>>>> main
