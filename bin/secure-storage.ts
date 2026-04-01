@@ -13,19 +13,19 @@
 import 'source-map-support/register'; // Translates compiled JS stack traces back to readable TS mappings
 import * as cdk from 'aws-cdk-lib';
 import { SecureStorageStack } from '../lib/secure-storage-stack';
+import { FrontendHostingStack } from '../lib/frontend-hosting-stack';
 
-// Instantiate the core CDK Application context container.
 const app = new cdk.App();
 
-// Bootstraps our heavily-secured storage environment logic into the application construct tree.
+const environment = { 
+  account: process.env.CDK_DEFAULT_ACCOUNT, 
+  region: process.env.CDK_DEFAULT_REGION 
+};
+
 new SecureStorageStack(app, 'SecureStorageStack', {
-  /**
-   * Environment Scope Binding
-   * Dynamic assignment matching whatever AWS profile invoked the CLI (`npx cdk synth` or `npx cdk deploy`).
-   * This logic allows seamless cross-region / multi-account deployments without manually hardcoding specific IDs.
-   */
-  env: { 
-    account: process.env.CDK_DEFAULT_ACCOUNT, 
-    region: process.env.CDK_DEFAULT_REGION 
-  },
+  env: environment,
+});
+
+new FrontendHostingStack(app, 'FrontendHostingStack', {
+  env: environment,
 });
