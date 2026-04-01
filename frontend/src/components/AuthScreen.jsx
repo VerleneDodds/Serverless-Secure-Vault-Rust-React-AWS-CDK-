@@ -4,7 +4,7 @@ import { Shield, Lock, Mail, User, ArrowRight, Eye, EyeOff, Zap, Database, Key, 
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AuthScreen() {
-  const { login, register, confirmRegistration, confirmMFA } = useAuth();
+  const { login, register, confirmRegistration, confirmMFA, loginAsGuest } = useAuth();
   const [mode, setMode] = useState('login'); // 'login' | 'register' | 'confirm' | 'mfa'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -222,6 +222,22 @@ export default function AuthScreen() {
               )}
             </button>
           </form>
+
+          {mode === 'login' && (
+            <div className="auth-demo-mode">
+              <div className="demo-divider"><span>OR</span></div>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-full btn-lg auth-demo-btn" 
+                onClick={loginAsGuest}
+                disabled={isLoading}
+              >
+                <Database size={16} />
+                View Interactive Demo
+              </button>
+              <p className="demo-hint text-center">Technical Recruiter? Explore the UI with mock data instanteously.</p>
+            </div>
+          )}
 
           {mode !== 'mfa' && (
             <div className="auth-switch">

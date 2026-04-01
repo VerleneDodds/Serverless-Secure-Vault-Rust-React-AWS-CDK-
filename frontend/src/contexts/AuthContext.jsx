@@ -48,6 +48,23 @@ export function AuthProvider({ children }) {
   const checkAuthStatus = useCallback(async () => {
     try {
       setLoading(true);
+      
+      // Check if we are in Guest Mode first
+      if (localStorage.getItem('secureVault_isGuest') === 'true') {
+        const guestUser = {
+          id: 'guest_user_id',
+          displayName: 'Technical Recruiter',
+          email: 'recruiter@example.com',
+          avatar: '#6366f1',
+          initials: 'TR',
+          mfaEnabled: false,
+          isGuest: true
+        };
+        setUser(guestUser);
+        setLoading(false);
+        return guestUser;
+      }
+
       const { userId } = await getCurrentUser();
       const attributes = await fetchUserAttributes();
       
@@ -65,7 +82,8 @@ export function AuthProvider({ children }) {
         email: attributes.email,
         avatar: stringToColor(attributes.name || attributes.email),
         initials: getInitials(attributes.name || attributes.email.split('@')[0]),
-        mfaEnabled
+        mfaEnabled,
+        isGuest: false
       };
       
       setUser(authUser);
@@ -80,6 +98,12 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     checkAuthStatus();
+  }, [checkAuthStatus]);
+
+  const loginAsGuest = useCallback(async () => {
+    localStorage.setItem('secureVault_isGuest', 'true');
+    localStorage.setItem('secureVault_apiUrl', 'DEMO_MODE');
+    await checkAuthStatus();
   }, [checkAuthStatus]);
 
   const register = useCallback(async (displayName, email, password) => {
@@ -108,6 +132,7 @@ export function AuthProvider({ children }) {
     try {
       const { isSignedIn, nextStep } = await signIn({ username: email, password });
       if (isSignedIn) {
+        localStorage.removeItem('secureVault_isGuest'); // Just in case
         await checkAuthStatus();
       }
       return { isSignedIn, nextStep };
@@ -174,10 +199,14 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
+      localStorage.removeItem('secureVault_isGuest');
       await signOut();
       setUser(null);
     } catch (err) {
       console.error('Logout error:', err);
+      // Even if signOut fails, we should clear guest state
+      localStorage.removeItem('secureVault_isGuest');
+      setUser(null);
     }
   }, []);
 
@@ -196,6 +225,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: !!user,
     register,
     login,
+    loginAsGuest,
     logout,
     confirmRegistration,
     confirmMFA,
