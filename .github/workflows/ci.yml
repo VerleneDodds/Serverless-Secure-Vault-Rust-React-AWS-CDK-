@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (CDK)
+        run: npm ci
+
+      - name: Verify CDK Synthesis
+        run: npx cdk synth
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install Cargo Lambda
+        run: pip3 install cargo-lambda
+
+      - name: Cargo Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify Rust Build (Cargo Check)
+        run: cargo check --verbose
+
+      - name: Build Rust Lambda
+        run: cargo lambda build --release
