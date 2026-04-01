@@ -1,16 +1,16 @@
 use aws_config::meta::region::RegionProviderChain;
-use aws_sdk_dynamodb::{Client as DynamoDbClient, types::AttributeValue};
-use aws_sdk_s3::{Client as S3Client, presigning::PresigningConfig};
+use aws_sdk_dynamodb::{types::AttributeValue, Client as DynamoDbClient};
+use aws_sdk_s3::{presigning::PresigningConfig, Client as S3Client};
+use chrono::Utc;
 use lambda_http::{run, service_fn, Body, Error, Request, RequestExt, Response};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::time::Duration;
-use tracing::{info, error, instrument};
+use tracing::{error, info, instrument};
 use uuid::Uuid;
-use chrono::Utc;
 
 /// Represents the incoming JSON payload for securing a file upload.
-/// 
+///
 /// Expected structure:
 /// {
 ///     "file_name": "example.pdf",
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Error> {
     // The region provider chain will automatically pick up the Lambda environment's region.
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
     let config = aws_config::from_env().region(region_provider).load().await;
-    
+
     // Instantiate clients once during cold start to improve performance on subsequent invocations.
     let s3_client = S3Client::new(&config);
     let dynamodb_client = DynamoDbClient::new(&config);
@@ -61,7 +61,8 @@ async fn main() -> Result<(), Error> {
     // Run the HTTP service
     run(service_fn(|req: Request| async {
         handle_request(req, &s3_client, &dynamodb_client).await
-    })).await
+    }))
+    .await
 }
 
 /// Core business logic for handling the /uploads endpoint.
@@ -78,7 +79,6 @@ async fn handle_request(
     s3_client: &S3Client,
     dynamodb_client: &DynamoDbClient,
 ) -> Result<Response<Body>, Error> {
-    
     // Fetch infrastructure topology from Environment Variables set by AWS CDK
     let bucket_name = env::var("BUCKET_NAME").expect("BUCKET_NAME env var must be set");
     let table_name = env::var("TABLE_NAME").expect("TABLE_NAME env var must be set");
@@ -116,7 +116,7 @@ async fn handle_request(
     // 1. Generate Presigned URL for S3 Object Put
     // ==========================================
     let expires_in = Duration::from_secs(900); // URL expires in 15 mins (Principle of Least Privilege time window)
-    
+
     let presigned_request = match s3_client
         .put_object()
         .bucket(&bucket_name)
@@ -127,9 +127,9 @@ async fn handle_request(
         Ok(req) => req,
         Err(e) => {
             error!("Failed to generate S3 presigned URL: {:?}", e);
-            return Ok(Response::builder()
-                .status(500)
-                .body(Body::from("Internal Server Error generating upload credential"))?);
+            return Ok(Response::builder().status(500).body(Body::from(
+                "Internal Server Error generating upload credential",
+            ))?);
         }
     };
 
@@ -173,6 +173,6 @@ async fn handle_request(
     Ok(Response::builder()
         .status(200)
         .header("Content-Type", "application/json")
-        .header("Access-Control-Allow-Origin", "*")  // Allows cross-origin requests from the browser
+        .header("Access-Control-Allow-Origin", "*") // Allows cross-origin requests from the browser
         .body(Body::Text(serde_json::to_string(&response_body)?))?)
 }

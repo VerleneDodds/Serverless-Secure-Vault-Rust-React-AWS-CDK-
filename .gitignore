@@ -25,3 +25,8 @@ Thumbs.db
 
 # Private Portfolio Setup Scripts
 setup_git.sh
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
