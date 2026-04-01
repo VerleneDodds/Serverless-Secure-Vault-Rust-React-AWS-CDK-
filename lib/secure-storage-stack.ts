@@ -46,7 +46,7 @@ export class SecureStorageStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, // Ensure no public bucket access
       cors: [
         {
-          allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.POST, s3.HttpMethods.GET],
+          allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.POST, s3.HttpMethods.GET, s3.HttpMethods.DELETE],
           allowedOrigins: ['*'], // In production, restrict this to the frontend domain
           allowedHeaders: ['*'],
           maxAge: 3000,
@@ -66,6 +66,14 @@ export class SecureStorageStack extends cdk.Stack {
       encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
       encryptionKey: tableKey,
       removalPolicy: cdk.RemovalPolicy.DESTROY, // Use RETAIN for production workloads
+    });
+
+    // Add GSI for folder-based listing: Query by OwnerID + ParentID
+    metadataTable.addGlobalSecondaryIndex({
+      indexName: 'FolderIndex',
+      partitionKey: { name: 'OwnerID', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'ParentID', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
     });
 
     // ==========================================
@@ -112,8 +120,18 @@ export class SecureStorageStack extends cdk.Stack {
     });
 
     const uploads = api.root.addResource('uploads');
-    const uploadIntegration = new apigateway.LambdaIntegration(apiHandler);
-    uploads.addMethod('POST', uploadIntegration); // Generate Upload URL
-    uploads.addMethod('GET', uploadIntegration);  // Generate Download URL
+    const folders = api.root.addResource('folders');
+    const stats = api.root.addResource('stats');
+    const apiIntegration = new apigateway.LambdaIntegration(apiHandler);
+
+    uploads.addMethod('POST', apiIntegration); // Generate Upload URL
+    uploads.addMethod('GET', apiIntegration);  // Generate Download URL
+    uploads.addMethod('DELETE', apiIntegration); // Delete File and Metadata
+
+    folders.addMethod('POST', apiIntegration); // Create Folder
+    folders.addMethod('GET', apiIntegration);  // List Items in Folder
+    folders.addMethod('DELETE', apiIntegration); // Delete Folder
+    
+    stats.addMethod('GET', apiIntegration); // Fetch Vault Stats
   }
 }

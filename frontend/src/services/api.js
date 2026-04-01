@@ -23,14 +23,11 @@ export function setApiUrl(url) {
 }
 
 /**
- * Request a presigned upload URL from the backend.
+ * Get a presigned URL and metadata record for a file upload.
  * POST /uploads
- * Body: { file_name: string, owner_id: string }
- * Returns: { upload_url: string, file_id: string, s3_key: string }
  */
-export async function requestUploadUrl(fileName, ownerId) {
-  const apiUrl = getApiUrl();
-  
+export async function requestUploadUrl(fileName, ownerId, parentId = 'ROOT', fileSize = 0) {
+  const apiUrl = getApiUrl().replace(/\/$/, "");
   const response = await fetch(`${apiUrl}/uploads`, {
     method: 'POST',
     headers: {
@@ -39,15 +36,49 @@ export async function requestUploadUrl(fileName, ownerId) {
     body: JSON.stringify({
       file_name: fileName,
       owner_id: ownerId,
+      file_size: fileSize,
+      parent_id: parentId
     }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API Error (${response.status}): ${errorText}`);
+    throw new Error('Failed to get upload URL from server');
   }
 
   return response.json();
+}
+
+/**
+ * Handle folder operations
+ */
+export async function createFolder(name, ownerId, parentId = 'ROOT') {
+  const apiUrl = getApiUrl().replace(/\/$/, "");
+  const response = await fetch(`${apiUrl}/folders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, owner_id: ownerId, parent_id: parentId }),
+  });
+  if (!response.ok) throw new Error('Failed to create folder');
+  return response.text();
+}
+
+export async function listFolderItems(ownerId, parentId = 'ROOT') {
+  const apiUrl = getApiUrl().replace(/\/$/, "");
+  const response = await fetch(`${apiUrl}/folders?owner_id=${ownerId}&parent_id=${parentId}`, {
+    method: 'GET',
+  });
+  if (!response.ok) throw new Error('Failed to list folder contents');
+  const data = await response.json();
+  return data.items || [];
+}
+
+export async function deleteFolder(folderId, ownerId) {
+  const apiUrl = getApiUrl().replace(/\/$/, "");
+  const response = await fetch(`${apiUrl}/folders?folder_id=${folderId}&owner_id=${ownerId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) throw new Error('Failed to delete folder');
+  return true;
 }
 
 /**
@@ -67,6 +98,24 @@ export async function getDownloadUrl(fileId, ownerId) {
   }
 
   return response.json();
+}
+
+/**
+ * Delete a file from the backend.
+ * DELETE /uploads?file_id=...&owner_id=...
+ */
+export async function deleteFile(fileId, ownerId) {
+  const apiUrl = getApiUrl().replace(/\/$/, "");
+  const response = await fetch(`${apiUrl}/uploads?file_id=${fileId}&owner_id=${ownerId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Delete failed: ${errorText}`);
+  }
+
+  return true;
 }
 
 /**
@@ -174,13 +223,15 @@ export function clearUploadHistory(userId) {
 /**
  * Get total stats across all entries for a user.
  */
-export function getUserStats(userId) {
-  const history = getUploadHistory(userId);
-  return {
-    totalUploads: history.length,
-    totalSize: history.reduce((acc, f) => acc + (f.fileSize || 0), 0),
-    successCount: history.filter((f) => f.status === 'success').length,
-    errorCount: history.filter((f) => f.status === 'error').length,
-    lastUpload: history.length > 0 ? history[0].timestamp : null,
-  };
+export async function getUserStats(userId) {
+  if (!userId) return { total_files: 0, total_folders: 0, total_size: 0 };
+  const apiUrl = getApiUrl().replace(/\/$/, "");
+  try {
+    const response = await fetch(`${apiUrl}/stats?owner_id=${userId}`);
+    if (!response.ok) throw new Error('Failed to fetch stats');
+    return response.json();
+  } catch (err) {
+    console.warn('Stats fetch failed:', err);
+    return { total_files: 0, total_folders: 0, total_size: 0 };
+  }
 }
