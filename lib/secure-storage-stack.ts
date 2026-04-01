@@ -113,6 +113,7 @@ export class SecureStorageStack extends cdk.Stack {
 
     const uploads = api.root.addResource('uploads');
     const uploadIntegration = new apigateway.LambdaIntegration(apiHandler);
-    uploads.addMethod('POST', uploadIntegration); // Generate Presigned URL Endpoint
+    uploads.addMethod('POST', uploadIntegration); // Generate Upload URL
+    uploads.addMethod('GET', uploadIntegration);  // Generate Download URL
   }
 }

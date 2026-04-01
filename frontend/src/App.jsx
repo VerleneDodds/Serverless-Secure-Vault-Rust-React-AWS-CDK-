@@ -6,11 +6,12 @@ import {
   Info, Settings, Clock, HardDrive, Zap, Eye, Copy,
   Trash2, ChevronRight, ExternalLink, Server, Database,
   Key, Globe, ArrowUpCircle, BarChart3, ShieldCheck,
-  Cpu, Layers, CloudUpload, RefreshCw, Users
+  Cpu, Layers, CloudUpload, RefreshCw, Users, Download
 } from 'lucide-react';
 import {
   requestUploadUrl, uploadFileToS3, formatFileSize,
   getFileCategory, getApiUrl, setApiUrl,
+  getDownloadUrl,
   getUploadHistory, addToUploadHistory, clearUploadHistory, getUserStats
 } from './services/api';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -144,7 +145,7 @@ function StatCard({ icon: Icon, value, label, badge, colorClass }) {
 // =====================================================
 // File Card
 // =====================================================
-function FileCard({ file, onCopyId }) {
+function FileCard({ file, onCopyId, onDownload }) {
   const category = getFileCategory(file.fileName);
   const IconComponent = category === 'pdf' ? FileText : category === 'img' ? Image : File;
 
@@ -172,6 +173,14 @@ function FileCard({ file, onCopyId }) {
         {file.status === 'pending' && <><Clock size={12} /> Pending</>}
       </div>
       <div className="file-card-actions">
+        <button 
+          title="Download File" 
+          onClick={() => onDownload(file)}
+          disabled={file.status !== 'success'}
+          className={file.status !== 'success' ? 'disabled' : ''}
+        >
+          <Download />
+        </button>
         <button title="Copy File ID" onClick={() => onCopyId(file.fileId)}>
           <Copy />
         </button>
@@ -631,7 +640,7 @@ function SettingsPage({ apiUrl, onApiUrlChange, onClearHistory, addToast }) {
 // =====================================================
 // Dashboard Page
 // =====================================================
-function DashboardPage({ uploadHistory, onCopyId }) {
+function DashboardPage({ uploadHistory, onCopyId, onDownload }) {
   const { user } = useAuth();
   const stats = getUserStats(user.id);
 
@@ -665,7 +674,12 @@ function DashboardPage({ uploadHistory, onCopyId }) {
       ) : (
         <div className="file-list">
           {uploadHistory.map((file, index) => (
-            <FileCard key={file.fileId || index} file={file} onCopyId={onCopyId} />
+            <FileCard 
+              key={file.fileId || index} 
+              file={file} 
+              onCopyId={onCopyId} 
+              onDownload={onDownload}
+            />
           ))}
         </div>
       )}
@@ -846,6 +860,32 @@ function AppShell() {
     addToast('success', 'Copied!', `File ID: ${fileId}`);
   };
 
+  const handleDownload = async (file) => {
+    try {
+      const apiUrl = getApiUrl();
+      if (apiUrl.includes('your-api-id.execute-api')) {
+        addToast('error', 'API Not Configured', 'Please set your API Gateway URL in Settings');
+        setActiveTab('settings');
+        return;
+      }
+
+      addToast('info', 'Generating download link...', `File: ${file.fileName}`);
+      const { download_url } = await getDownloadUrl(file.fileId, user.id);
+      
+      // We open in new window which triggers the browser download behavior
+      window.open(download_url, '_blank');
+      addToast('success', 'Download started', `Downloading ${file.fileName}`);
+    } catch (err) {
+      console.error('Download error:', err);
+      const isFetchError = err.message.includes('fetch') || err.message.includes('NetworkError');
+      addToast(
+        'error', 
+        'Download failed', 
+        isFetchError ? 'Network error. Check your API URL and CORS settings.' : err.message
+      );
+    }
+  };
+
   return (
     <div className="app">
       <div className="app-content">
@@ -860,7 +900,11 @@ function AppShell() {
               transition={{ duration: 0.2 }}
             >
               {activeTab === 'dashboard' && (
-                <DashboardPage uploadHistory={uploadHistory} onCopyId={handleCopyId} />
+                <DashboardPage 
+                  uploadHistory={uploadHistory} 
+                  onCopyId={handleCopyId} 
+                  onDownload={handleDownload} 
+                />
               )}
               {activeTab === 'upload' && (
                 <UploadPage

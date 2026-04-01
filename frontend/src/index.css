@@ -770,10 +770,23 @@ body {
   transition: all var(--transition-fast);
 }
 
-.file-card-actions button:hover {
+.file-card-actions button:hover:not(:disabled) {
   color: var(--color-text-primary);
   background: var(--color-surface-glass-hover);
   border-color: var(--color-border-subtle);
+}
+
+.file-card-actions button:disabled,
+.file-card-actions button.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.file-card-actions button[title="Download File"]:hover:not(:disabled) {
+  color: var(--color-accent-success-light);
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 .file-card-actions button svg {

@@ -51,6 +51,25 @@ export async function requestUploadUrl(fileName, ownerId) {
 }
 
 /**
+ * Request a presigned download URL for a file.
+ * GET /uploads?file_id=...&owner_id=...
+ * Returns: { download_url: string, file_name: string }
+ */
+export async function getDownloadUrl(fileId, ownerId) {
+  const apiUrl = getApiUrl().replace(/\/$/, "");
+  const response = await fetch(`${apiUrl}/uploads?file_id=${fileId}&owner_id=${ownerId}`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Download generation failed: ${errorText}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Upload a file directly to S3 using a presigned PUT URL.
  * Supports progress tracking via XMLHttpRequest.
  */

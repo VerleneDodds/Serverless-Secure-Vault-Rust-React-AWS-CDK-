@@ -2020,6 +2020,7 @@ dependencies = [
  "aws-sdk-dynamodb",
  "aws-sdk-s3",
  "chrono",
+ "http 1.4.0",
  "lambda_http",
  "serde",
  "serde_json",
