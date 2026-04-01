@@ -12,10 +12,13 @@ Amplify.configure({
     }
   }
 });
-
 import { setApiUrl } from './services/api';
-// Live production endpoint from CloudFormation outputs
-setApiUrl('https://3qlauzvelj.execute-api.us-west-2.amazonaws.com/prod/');
+
+// Initialize production API endpoint if not in Demo Mode
+const currentApi = localStorage.getItem('secureVault_apiUrl');
+if (!currentApi || currentApi.includes('your-api-id') || (currentApi !== 'DEMO_MODE' && !localStorage.getItem('secureVault_isGuest'))) {
+  setApiUrl('https://3qlauzvelj.execute-api.us-west-2.amazonaws.com/prod/');
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

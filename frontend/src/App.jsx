@@ -34,7 +34,8 @@ import {
   requestUploadUrl, uploadFileToS3, formatFileSize,
   getDownloadUrl, deleteFile, listFolderItems, createFolder,
   deleteFolder, getUserStats, getApiUrl, setApiUrl, confirmUpload,
-  listVaults, createVault, deleteVault as deleteFileVault
+  listVaults, createVault, deleteVault as deleteFileVault,
+  performCleanup
 } from './services/api';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthScreen from './components/AuthScreen';
@@ -222,7 +223,14 @@ function DashboardPage({
       <div className="items-grid">
         {folders.map(folder => (
           <ItemCard 
-            key={folder.id} icon={Folder} name={folder.name} 
+            key={folder.id} 
+            icon={Folder} 
+            name={
+              <div className="item-meta-group">
+                {folder.name}
+                {folder.isVolatile && <span className="volatile-badge"><Zap size={10} /> Demo: Volatile</span>}
+              </div>
+            }
             meta={`Created ${new Date(folder.upload_date).toLocaleDateString()}`}
             onClick={() => onNavigate(folder)}
             actions={<button className="action-btn danger" onClick={() => onDeleteFolder(folder)}><Trash2 size={16} /></button>}
@@ -230,7 +238,14 @@ function DashboardPage({
         ))}
         {files.map(file => (
           <ItemCard 
-            key={file.id} icon={File} name={file.name} 
+            key={file.id} 
+            icon={File} 
+            name={
+              <div className="item-meta-group">
+                {file.name}
+                {file.isVolatile && <span className="volatile-badge"><Zap size={10} /> Demo: Volatile</span>}
+              </div>
+            }
             meta={`${new Date(file.upload_date).toLocaleDateString()} • ${formatFileSize(file.size)}`}
             actions={
               <>
@@ -618,10 +633,9 @@ function AppShell() {
   };
 
   const handleCleanup = async () => {
+    if (!activeVault) return;
     try {
-      const apiUrl = getApiUrl().replace(/\/$/, "");
-      const res = await fetch(`${apiUrl}/cleanup?vault_id=${activeVault.id}`, { method: 'POST' });
-      const text = await res.text();
+      const text = await performCleanup(activeVault.id);
       addToast('success', 'Vault Cleaned', text);
       fetchItems();
     } catch (err) {
@@ -646,6 +660,13 @@ function AppShell() {
             <div className="nav-brand">
               <Shield size={32} /> <span>Secure<span>Vault</span></span>
             </div>
+
+            {user.isGuest && (
+              <div className="demo-badge">
+                <Zap size={14} fill="currentColor" />
+                UI DEMO MODE
+              </div>
+            )}
 
             <div className="vault-switcher">
               <div className={`vault-pill ${showVaultMenu ? 'active' : ''}`} onClick={() => setShowVaultMenu(!showVaultMenu)}>

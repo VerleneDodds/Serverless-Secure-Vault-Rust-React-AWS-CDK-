@@ -29,11 +29,45 @@ export function setApiUrl(url) {
   localStorage.setItem('secureVault_apiUrl', url);
 }
 
+const isDemo = () => getApiUrl() === 'DEMO_MODE';
+
+// ==========================================
+// Demo Data Management (sessionStorage)
+// ==========================================
+
+const INITIAL_DEMO_ITEMS = [
+  { id: 'd-1', name: 'Cloud Engineering Projects', kind: 'FOLDER', size: 0, upload_date: new Date(Date.now() - 86400000).toISOString(), parent_id: 'ROOT', vault_id: 'v-demo-1', status: 'ACTIVE', isVolatile: false },
+  { id: 'd-2', name: 'Infrastructure Specs', kind: 'FOLDER', size: 0, upload_date: new Date(Date.now() - 43200000).toISOString(), parent_id: 'ROOT', vault_id: 'v-demo-1', status: 'ACTIVE', isVolatile: false },
+  { id: 'f-1', name: 'Q3_Financial_Summary.pdf', kind: 'FILE', size: 2450000, upload_date: new Date(Date.now() - 86400000).toISOString(), parent_id: 'ROOT', vault_id: 'v-demo-1', status: 'ACTIVE', isVolatile: false },
+  { id: 'f-2', name: 'architecture_diagram.png', kind: 'FILE', size: 850000, upload_date: new Date(Date.now() - 172800000).toISOString(), parent_id: 'ROOT', vault_id: 'v-demo-1', status: 'ACTIVE', isVolatile: false },
+  { id: 'f-3', name: 'rust_lambda_config.yaml', kind: 'FILE', size: 12000, upload_date: new Date(Date.now() - 3600000).toISOString(), parent_id: 'ROOT', vault_id: 'v-demo-1', status: 'ACTIVE', isVolatile: false },
+  { id: 'f-sub', name: 'Sub-project_Draft.docx', kind: 'FILE', size: 450000, upload_date: new Date(Date.now() - 1200000).toISOString(), parent_id: 'd-1', vault_id: 'v-demo-1', status: 'ACTIVE', isVolatile: false }
+];
+
+function getDemoItems() {
+  const stored = sessionStorage.getItem('secureVault_demoItems');
+  if (!stored) {
+    sessionStorage.setItem('secureVault_demoItems', JSON.stringify(INITIAL_DEMO_ITEMS));
+    return INITIAL_DEMO_ITEMS;
+  }
+  return JSON.parse(stored);
+}
+
+function saveDemoItems(items) {
+  sessionStorage.setItem('secureVault_demoItems', JSON.stringify(items));
+}
+
 // ==========================================
 // Vault Operations
 // ==========================================
 
 export async function listVaults(ownerId) {
+  if (isDemo()) {
+    return [
+      { id: 'v-demo-1', name: 'Primary Vault (Demo)', created_at: Date.now() },
+      { id: 'v-demo-2', name: 'Secure Archive (Demo)', created_at: Date.now() }
+    ];
+  }
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/vaults?owner_id=${ownerId}`, {
@@ -46,6 +80,7 @@ export async function listVaults(ownerId) {
 }
 
 export async function createVault(ownerId, name) {
+  if (isDemo()) return "SUCCESS";
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/vaults`, {
@@ -58,6 +93,7 @@ export async function createVault(ownerId, name) {
 }
 
 export async function deleteVault(ownerId, vaultId) {
+  if (isDemo()) return "SUCCESS";
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/vaults?owner_id=${ownerId}&vault_id=${vaultId}`, {
@@ -73,6 +109,28 @@ export async function deleteVault(ownerId, vaultId) {
 // ==========================================
 
 export async function requestUploadUrl(fileName, ownerId, vaultId, parentId = 'ROOT', fileSize = 0, contentType = 'application/octet-stream') {
+  if (isDemo()) {
+    const fileId = 'f-' + Math.random().toString(36).substr(2, 9);
+    // Add to volatile storage immediately as PENDING
+    const items = getDemoItems();
+    items.push({
+      id: fileId,
+      name: fileName,
+      kind: 'FILE',
+      size: fileSize,
+      upload_date: new Date().toISOString(),
+      parent_id: parentId,
+      vault_id: vaultId,
+      status: 'PENDING',
+      isVolatile: true
+    });
+    saveDemoItems(items);
+
+    return { 
+      upload_url: 'DEMO_URL', 
+      file_id: fileId
+    };
+  }
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/uploads`, {
@@ -93,6 +151,13 @@ export async function requestUploadUrl(fileName, ownerId, vaultId, parentId = 'R
 }
 
 export async function confirmUpload(fileId, vaultId) {
+  if (isDemo()) {
+    const items = getDemoItems();
+    const item = items.find(i => i.id === fileId);
+    if (item) item.status = 'ACTIVE';
+    saveDemoItems(items);
+    return true;
+  }
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/uploads`, {
@@ -105,6 +170,23 @@ export async function confirmUpload(fileId, vaultId) {
 }
 
 export async function createFolder(name, ownerId, vaultId, parentId = 'ROOT') {
+  if (isDemo()) {
+    const folderId = 'd-' + Math.random().toString(36).substr(2, 9);
+    const items = getDemoItems();
+    items.push({
+      id: folderId,
+      name,
+      kind: 'FOLDER',
+      size: 0,
+      upload_date: new Date().toISOString(),
+      parent_id: parentId,
+      vault_id: vaultId,
+      status: 'ACTIVE',
+      isVolatile: true
+    });
+    saveDemoItems(items);
+    return "SUCCESS";
+  }
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/folders`, {
@@ -117,6 +199,10 @@ export async function createFolder(name, ownerId, vaultId, parentId = 'ROOT') {
 }
 
 export async function listFolderItems(vaultId, parentId = 'ROOT') {
+  if (isDemo()) {
+    const items = getDemoItems();
+    return items.filter(i => i.vault_id === vaultId && i.parent_id === parentId && i.status !== 'PENDING');
+  }
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/folders?vault_id=${vaultId}&parent_id=${parentId}`, {
@@ -129,6 +215,11 @@ export async function listFolderItems(vaultId, parentId = 'ROOT') {
 }
 
 export async function deleteFolder(folderId, vaultId) {
+  if (isDemo()) {
+    const items = getDemoItems().filter(i => i.id !== folderId);
+    saveDemoItems(items);
+    return true;
+  }
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/folders?folder_id=${folderId}&vault_id=${vaultId}`, {
@@ -140,6 +231,7 @@ export async function deleteFolder(folderId, vaultId) {
 }
 
 export async function getDownloadUrl(fileId, vaultId) {
+  if (isDemo()) return { download_url: '#' };
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/uploads?file_id=${fileId}&vault_id=${vaultId}`, {
@@ -151,6 +243,11 @@ export async function getDownloadUrl(fileId, vaultId) {
 }
 
 export async function deleteFile(fileId, vaultId) {
+  if (isDemo()) {
+    const items = getDemoItems().filter(i => i.id !== fileId);
+    saveDemoItems(items);
+    return true;
+  }
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/uploads?file_id=${fileId}&vault_id=${vaultId}`, {
@@ -162,6 +259,15 @@ export async function deleteFile(fileId, vaultId) {
 }
 
 export async function getUserStats(vaultId) {
+  if (isDemo()) {
+    const items = getDemoItems().filter(i => i.vault_id === vaultId);
+    const files = items.filter(i => i.kind === 'FILE');
+    return { 
+      total_files: files.length, 
+      total_folders: items.length - files.length, 
+      total_size: files.reduce((acc, f) => acc + (f.size || 0), 0) 
+    };
+  }
   if (!vaultId) return { total_files: 0, total_folders: 0, total_size: 0 };
   const apiUrl = getApiUrl().replace(/\/$/, "");
   const authHeader = await getAuthHeader();
@@ -178,11 +284,41 @@ export async function getUserStats(vaultId) {
   }
 }
 
+export async function performCleanup(vaultId) {
+  if (isDemo()) {
+    return "Optimized demo storage. Database state successfully refreshed.";
+  }
+  const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
+  const response = await fetch(`${apiUrl}/cleanup?vault_id=${vaultId}`, { 
+    method: 'POST',
+    headers: { ...authHeader }
+  });
+  if (!response.ok) throw new Error('Cleanup operation failed');
+  return response.text();
+}
+
 // ==========================================
 // Utilities
 // ==========================================
 
 export function uploadFileToS3(presignedUrl, file, onProgress) {
+  if (isDemo()) {
+    return new Promise((resolve) => {
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += Math.floor(Math.random() * 15) + 5;
+        if (progress >= 100) {
+          progress = 100;
+          onProgress(100);
+          clearInterval(interval);
+          setTimeout(() => resolve({ status: 200 }), 300);
+        } else {
+          onProgress(progress);
+        }
+      }, 200);
+    });
+  }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.upload.addEventListener('progress', (event) => {
