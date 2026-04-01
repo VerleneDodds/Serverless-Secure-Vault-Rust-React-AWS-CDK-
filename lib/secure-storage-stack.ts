@@ -5,6 +5,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as kms from 'aws-cdk-lib/aws-kms';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
 
 /**
  * SecureStorageStack defines the CloudFormation infrastructure for a secure, 
@@ -100,6 +101,38 @@ export class SecureStorageStack extends cdk.Stack {
     tableKey.grantEncryptDecrypt(apiHandler); // Lambda needs access to Decrypt KMS for DynamoDB
 
     // ==========================================
+    // 5. Auth Layer: Amazon Cognito
+    // ==========================================
+    const userPool = new cognito.UserPool(this, 'SecureStorageUserPool', {
+      userPoolName: 'SecureStorageUsers',
+      selfSignUpEnabled: true,
+      signInAliases: { email: true },
+      autoVerify: { email: true },
+      passwordPolicy: {
+        minLength: 8,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: true,
+      },
+      mfa: cognito.Mfa.OPTIONAL,
+      mfaSecondFactor: {
+        sms: false,
+        otp: true,
+      },
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // Use RETAIN for production
+    });
+
+    const userPoolClient = new cognito.UserPoolClient(this, 'SecureStorageUserPoolClient', {
+      userPool,
+      generateSecret: false, // Must be false for web clients (v4 SDK)
+    });
+
+    const authorizer = new apigateway.CognitoUserPoolsAuthorizer(this, 'SecureStorageAuthorizer', {
+      cognitoUserPools: [userPool],
+    });
+
+    // ==========================================
     // 5. API Layer: API Gateway (REST API)
     // ==========================================
     // Exposes a secure endpoint to the internet to trigger the Rust Lambda.
@@ -126,7 +159,18 @@ export class SecureStorageStack extends cdk.Stack {
 
     api.root.addProxy({
       defaultIntegration: apiIntegration,
-      anyMethod: true
+      anyMethod: true,
+      defaultMethodOptions: {
+        authorizer: authorizer,
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+      }
     });
+
+    // ==========================================
+    // 6. Outputs
+    // ==========================================
+    new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
+    new cdk.CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId });
+    new cdk.CfnOutput(this, 'ApiUrl', { value: api.url });
   }
 }

@@ -6,7 +6,20 @@
  * Supports multi-vault architecture scoped per-user.
  */
 
-const DEFAULT_API_URL = 'https://your-api-id.execute-api.us-east-1.amazonaws.com/prod';
+import { fetchAuthSession } from 'aws-amplify/auth';
+
+const DEFAULT_API_URL = 'https://3qlauzvelj.execute-api.us-west-2.amazonaws.com/prod';
+
+async function getAuthHeader() {
+  try {
+    const session = await fetchAuthSession();
+    const token = session.tokens?.idToken?.toString();
+    return token ? { 'Authorization': token } : {};
+  } catch (err) {
+    console.error('Session error:', err);
+    return {};
+  }
+}
 
 export function getApiUrl() {
   return localStorage.getItem('secureVault_apiUrl') || DEFAULT_API_URL;
@@ -22,8 +35,10 @@ export function setApiUrl(url) {
 
 export async function listVaults(ownerId) {
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/vaults?owner_id=${ownerId}`, {
     method: 'GET',
+    headers: { ...authHeader }
   });
   if (!response.ok) throw new Error('Failed to list vaults');
   const data = await response.json();
@@ -32,12 +47,24 @@ export async function listVaults(ownerId) {
 
 export async function createVault(ownerId, name) {
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/vaults`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeader },
     body: JSON.stringify({ name, owner_id: ownerId }),
   });
   if (!response.ok) throw new Error('Failed to create vault');
+  return response.text();
+}
+
+export async function deleteVault(ownerId, vaultId) {
+  const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
+  const response = await fetch(`${apiUrl}/vaults?owner_id=${ownerId}&vault_id=${vaultId}`, {
+    method: 'DELETE',
+    headers: { ...authHeader }
+  });
+  if (!response.ok) throw new Error('Vault decommission failed');
   return response.text();
 }
 
@@ -47,9 +74,10 @@ export async function createVault(ownerId, name) {
 
 export async function requestUploadUrl(fileName, ownerId, vaultId, parentId = 'ROOT', fileSize = 0, contentType = 'application/octet-stream') {
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/uploads`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeader },
     body: JSON.stringify({
       file_name: fileName,
       owner_id: ownerId,
@@ -66,9 +94,10 @@ export async function requestUploadUrl(fileName, ownerId, vaultId, parentId = 'R
 
 export async function confirmUpload(fileId, vaultId) {
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/uploads`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeader },
     body: JSON.stringify({ file_id: fileId, vault_id: vaultId }),
   });
   if (!response.ok) throw new Error('Failed to confirm upload');
@@ -77,9 +106,10 @@ export async function confirmUpload(fileId, vaultId) {
 
 export async function createFolder(name, ownerId, vaultId, parentId = 'ROOT') {
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/folders`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeader },
     body: JSON.stringify({ name, owner_id: ownerId, vault_id: vaultId, parent_id: parentId }),
   });
   if (!response.ok) throw new Error('Failed to create folder');
@@ -88,8 +118,10 @@ export async function createFolder(name, ownerId, vaultId, parentId = 'ROOT') {
 
 export async function listFolderItems(vaultId, parentId = 'ROOT') {
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/folders?vault_id=${vaultId}&parent_id=${parentId}`, {
     method: 'GET',
+    headers: { ...authHeader }
   });
   if (!response.ok) throw new Error('Failed to list contents');
   const data = await response.json();
@@ -98,8 +130,10 @@ export async function listFolderItems(vaultId, parentId = 'ROOT') {
 
 export async function deleteFolder(folderId, vaultId) {
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/folders?folder_id=${folderId}&vault_id=${vaultId}`, {
     method: 'DELETE',
+    headers: { ...authHeader }
   });
   if (!response.ok) throw new Error('Failed to delete folder');
   return true;
@@ -107,8 +141,10 @@ export async function deleteFolder(folderId, vaultId) {
 
 export async function getDownloadUrl(fileId, vaultId) {
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/uploads?file_id=${fileId}&vault_id=${vaultId}`, {
     method: 'GET',
+    headers: { ...authHeader }
   });
   if (!response.ok) throw new Error('Download request failed');
   return response.json();
@@ -116,8 +152,10 @@ export async function getDownloadUrl(fileId, vaultId) {
 
 export async function deleteFile(fileId, vaultId) {
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${apiUrl}/uploads?file_id=${fileId}&vault_id=${vaultId}`, {
     method: 'DELETE',
+    headers: { ...authHeader }
   });
   if (!response.ok) throw new Error('Delete failed');
   return true;
@@ -126,8 +164,11 @@ export async function deleteFile(fileId, vaultId) {
 export async function getUserStats(vaultId) {
   if (!vaultId) return { total_files: 0, total_folders: 0, total_size: 0 };
   const apiUrl = getApiUrl().replace(/\/$/, "");
+  const authHeader = await getAuthHeader();
   try {
-    const response = await fetch(`${apiUrl}/stats?vault_id=${vaultId}`);
+    const response = await fetch(`${apiUrl}/stats?vault_id=${vaultId}`, {
+      headers: { ...authHeader }
+    });
     if (!response.ok) throw new Error('Failed to fetch stats');
     const data = await response.json();
     return data;

@@ -14,6 +14,8 @@ A highly robust, multi-vault secure storage architecture designed for absolute d
 
 ## Key Features & Architecture
 
+-   **Amazon Cognito Identity**: Full-scale identity management with JWT-based sessions, providing secure access to the Rust backend via API Gateway Authorizers.
+-   **Multi-Factor Authentication (2FA)**: Production-ready TOTP (Time-based One-Time Password) support, allowing users to secure their vaults with an authenticator app (Google Auth, Authy, etc.).
 -   **Multi-Vault Partitioning**: Enables users to create and manage multiple isolated secure environments (Vaults) under a single account, ensuring zero data leakage between contexts.
 -   **Proxy+ API Integration**: Utilizes a catch-all API Gateway `{proxy+}` resource, delegating 100% of routing and CORS logic to the Rust backend for a perfectly fluid handshake.
 -   **Verified Two-Stage Handshake**: Eliminates "ghost" records by marking files as `PENDING` until S3 confirms receipt and the frontend verifies the upload via a secondary `PATCH` request.
@@ -24,6 +26,7 @@ A highly robust, multi-vault secure storage architecture designed for absolute d
 ## Tech Stack
 
 ### Backend (Rust & AWS)
+-   **Identity**: Amazon Cognito (User Pools) with TOTP-based Multi-Factor Authentication.
 -   **Compute**: Rust Lambda with Custom Runtime (`provided.al2023`) to maximize memory efficiency and speed.
 -   **Infrastructure**: AWS CDK (TypeScript) for reproducible, versioned infrastructure-as-code.
 -   **Database**: Amazon DynamoDB with a Composite Partition Key strategy for multi-vault scaling.

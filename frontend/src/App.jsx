@@ -34,14 +34,46 @@ import {
   requestUploadUrl, uploadFileToS3, formatFileSize,
   getDownloadUrl, deleteFile, listFolderItems, createFolder,
   deleteFolder, getUserStats, getApiUrl, setApiUrl, confirmUpload,
-  listVaults, createVault
+  listVaults, createVault, deleteVault as deleteFileVault
 } from './services/api';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthScreen from './components/AuthScreen';
 
 // =====================================================
-// Components
+// Loading Screen
 // =====================================================
+function LoadingScreen() {
+  return (
+    <div className="auth-screen">
+      <div className="auth-bg-effects">
+        <div className="auth-bg-orb auth-bg-orb-1" />
+      </div>
+      <motion.div 
+        className="loading-container"
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        style={{ textAlign: 'center', zIndex: 10 }}
+      >
+        <div className="loading-logo-wrapper">
+          <motion.div 
+            className="loading-pulse"
+            animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <div className="auth-logo" style={{ margin: '0 auto 2rem' }}>
+            <Shield size={32} />
+          </div>
+        </div>
+        <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>Initializing Vault</h2>
+        <p style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Establishing secure connection...</p>
+      </motion.div>
+    </div>
+  );
+}
+
+// =====================================================
+// Components
+// =====================================
 
 // =====================================================
 // Stat Card
@@ -157,9 +189,27 @@ function DashboardPage({
       <AnimatePresence>
         {showFolderModal && (
           <div className="modal-overlay" onClick={() => setShowFolderModal(false)}>
-            <motion.div className="modal-content" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} onClick={e => e.stopPropagation()}>
-              <h3>Create Secure Folder</h3>
-              <input autoFocus placeholder="Name..." value={newFolderName} onChange={e => setNewFolderName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} />
+            <motion.div 
+              className="modal-content" 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <div className="modal-icon"><FolderPlus size={24} /></div>
+                <h3>Create Secure Folder</h3>
+              </div>
+              
+              <input 
+                autoFocus 
+                className="glass-input"
+                placeholder="Folder Designation..." 
+                value={newFolderName} 
+                onChange={e => setNewFolderName(e.target.value)} 
+                onKeyDown={e => e.key === 'Enter' && handleCreate()} 
+              />
+              
               <div className="modal-actions">
                 <button className="btn-secondary" onClick={() => setShowFolderModal(false)}>Cancel</button>
                 <button className="btn-primary" onClick={handleCreate}>Initialize</button>
@@ -221,13 +271,65 @@ function UploadConfigPanel({ onFilesSelected, currentFolderName }) {
 }
 
 function SettingsPage({ apiUrl, onApiUrlChange, theme, onThemeChange, addToast }) {
+  const { setupTOTPDevice, verifyTOTP, user, disableMFA } = useAuth();
   const [editUrl, setEditUrl] = useState(apiUrl);
+  const [mfaStep, setMfaStep] = useState('idle'); // idle, qr, verify
+  const [mfaData, setMfaData] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
+
   const handleSave = () => { onApiUrlChange(editUrl); addToast('success', 'Core Updated', 'Gateway endpoint configurations saved.'); };
+
+  const startMfaSetup = async () => {
+    setIsBusy(true);
+    try {
+      const data = await setupTOTPDevice();
+      setMfaData(data);
+      setMfaStep('qr');
+    } catch (err) {
+      console.error('MFA Setup Rejection:', err);
+      addToast('error', 'MFA Setup Failed', err.message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const completeMfaSetup = async () => {
+    setIsBusy(true);
+    try {
+      await verifyTOTP(mfaCode);
+      addToast('success', '2FA Enabled', 'Your account is now tactically secured.');
+      setMfaStep('idle');
+      setMfaData(null);
+      setMfaCode('');
+    } catch (err) {
+      addToast('error', 'Verification Failed', err.message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleDisableMFA = async () => {
+    if (!window.confirm('WARNING: Disabling 2FA will lower your vault security clearance. Proceed?')) return;
+    setIsBusy(true);
+    try {
+      await disableMFA();
+      addToast('info', '2FA Deactivated', 'Multi-factor secondary protocol has been disabled.');
+    } catch (err) {
+      addToast('error', 'Disable Failed', err.message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
 
   return (
     <div className="settings-container">
       <div className="page-header"><h1>Portal Settings</h1></div>
       
+      <div className="view-header" style={{ marginBottom: '2rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+        <p className="dim">Authenticated Identity: <strong style={{ color: 'var(--text-primary)' }}>{user.email}</strong></p>
+      </div>
+
       <div className="settings-section">
         <h2><Zap /> Personalization</h2>
         <div className="setting-group">
@@ -240,7 +342,54 @@ function SettingsPage({ apiUrl, onApiUrlChange, theme, onThemeChange, addToast }
       </div>
 
       <div className="settings-section">
-        <h2><Lock /> Infrastructure</h2>
+        <h2><ShieldCheck /> Security Architecture</h2>
+        <div className="setting-group">
+          <label>Two-Factor Authentication (TOTP)</label>
+          
+          {user.mfaEnabled ? (
+            <div className="mfa-active-panel" style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '1.5rem', borderRadius: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 10px #10b981' }} />
+                <span style={{ fontWeight: 700, color: '#10b981', fontSize: '0.9rem', letterSpacing: '0.05em' }}>PROTOCOL ACTIVE</span>
+              </div>
+              <p className="dim" style={{ marginBottom: '1.5rem' }}>Your account is protected by hardware-based verification. Unauthorized access is tactically blocked.</p>
+              <button className="btn-secondary" onClick={handleDisableMFA} disabled={isBusy} style={{ borderColor: 'rgba(244, 63, 94, 0.3)', color: 'var(--rose)' }}>
+                {isBusy ? 'Wait...' : 'Deactivate 2FA'}
+              </button>
+            </div>
+          ) : (
+            <>
+              {mfaStep === 'idle' ? (
+                <div className="mfa-idle-panel">
+                  <p className="dim">Harden your vault with authenticator-based security.</p>
+                  <button className="btn-secondary" onClick={startMfaSetup} disabled={isBusy}>
+                    <Lock size={16} /> {isBusy ? 'Wait...' : 'Set Up Electronic 2FA'}
+                  </button>
+                </div>
+              ) : mfaStep === 'qr' ? (
+                <div className="mfa-qr-panel">
+                   <div className="qr-box" style={{ background: 'white', padding: '1rem', borderRadius: '12px', width: '232px', margin: '1rem 0' }}>
+                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(mfaData.uri)}`} alt="QR" />
+                   </div>
+                   <p className="dim">Scan this code in your Authenticator app (e.g. Google Auth, Authy).</p>
+                   <button className="btn-primary" onClick={() => setMfaStep('verify')} style={{ marginTop: '1rem' }}>I've Scanned It</button>
+                </div>
+              ) : (
+                <div className="mfa-verify-panel">
+                   <input type="text" className="mfa-input" placeholder="000 000" value={mfaCode} onChange={e => setMfaCode(e.target.value)} style={{ marginBottom: '2rem' }} />
+                   <div className="flex-actions" style={{ display: 'flex', gap: '1rem' }}>
+                     <button className="btn-secondary" onClick={() => setMfaStep('qr')}>Back</button>
+                     <button className="btn-primary" onClick={completeMfaSetup} disabled={isBusy}>Finalize Handshake</button>
+                   </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h2><Zap /> Infrastructure</h2>
         <div className="setting-group">
           <label>API Gateway Endpoint</label>
           <input type="text" value={editUrl} onChange={e => setEditUrl(e.target.value)} placeholder="https://api..." />
@@ -337,9 +486,8 @@ function AppShell() {
     }
     if (!window.confirm(`Permanently decommission vault "${vault.name}" and ALL assets within? This cannot be undone.`)) return;
     try {
-      // We'll need a deleteVault endpoint in backend
-      const apiUrl = getApiUrl().replace(/\/$/, "");
-      await fetch(`${apiUrl}/vaults?owner_id=${user.id}&vault_id=${vault.id}`, { method: 'DELETE' });
+      // Using api.js service for authenticated deletion
+      await deleteFileVault(user.id, vault.id);
       
       if (activeVault?.id === vault.id) {
         setActiveVault(null);
@@ -701,7 +849,12 @@ function AppShell() {
 // Auth Wrapper
 // =====================================================
 function AppRouter() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  
+  if (loading) {
+    return <LoadingScreen key="loading" />;
+  }
+
   return (
     <AnimatePresence mode="wait">
       {isAuthenticated ? <AppShell key="shell" /> : <AuthScreen key="auth" />}

@@ -2,6 +2,17 @@
 
 This document explains the "Why" and "How" of the crucial mechanisms inside the Secure Storage repository.
 
+## 0. Identity & Perimeter Security (Amazon Cognito)
+
+To reach a production-grade "Zero Trust" model, the platform leverages **Amazon Cognito** for comprehensive identity management.
+
+-   **JWT-Based Authorization**: Every request to the `{proxy+}` API Gateway resource must carry a valid Cognito ID Token in the `Authorization` header. The **CognitoUserPoolsAuthorizer** performs a native, low-latency validation of the token's signature, issuer, and expiration before the Rust Lambda is even invoked.
+-   **Multi-Factor Authentication (2FA/TOTP)**:
+    -   **Tactical Hardening**: We implemented Time-based One-Time Password (TOTP) secondary verification.
+    -   **The Handshake**: The enrollment consists of a three-way handshake: (1) `setUpTOTP` generates a cryptographically secure secret, (2) the frontend renders an `otpauth` URI via a QR code, and (3) `verifyTOTPSetup` confirms the user has successfully synced their device before enabling the `PREFERRED` MFA state.
+    -   **Challenge Detection**: During sign-in, Cognito intelligently detects the MFA state and returns a `CONFIRM_SIGN_IN_WITH_TOTP_CODE` challenge, which the React frontend handles by dynamically switching to a tactical authentication interface.
+
+
 ## 1. Multi-Vault Partitioning Model (Architecture Refactor)
 
 The system has transitioned from a flat user-based storage model to a **Multi-Vault Partitioning Model**. This allows a single user to manage multiple isolated "Vaults" (environments), each with its own root directory and metadata.

@@ -1,45 +1,20 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { 
+  signIn, 
+  signUp, 
+  signOut, 
+  fetchAuthSession, 
+  getCurrentUser, 
+  fetchUserAttributes, 
+  confirmSignUp,
+  setUpTOTP,
+  verifyTOTPSetup,
+  confirmSignIn,
+  updateMFAPreference,
+  fetchMFAPreference
+} from 'aws-amplify/auth';
 
 const AuthContext = createContext(null);
-
-/**
- * User data structure:
- * {
- *   id: string,          // e.g. "user-a1b2c3d4" (maps to DynamoDB PK: USER#{id})
- *   displayName: string, // e.g. "Vincent Dodds"
- *   email: string,       // e.g. "vince@example.com"
- *   avatar: string,      // initials-based or color
- *   createdAt: string,   // ISO timestamp
- *   lastLogin: string,   // ISO timestamp
- * }
- */
-
-const STORAGE_KEY = 'secureVault_users';
-const ACTIVE_USER_KEY = 'secureVault_activeUser';
-
-function loadUsers() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function saveUsers(users) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-}
-
-function loadActiveUserId() {
-  return localStorage.getItem(ACTIVE_USER_KEY) || null;
-}
-
-function saveActiveUserId(id) {
-  if (id) {
-    localStorage.setItem(ACTIVE_USER_KEY, id);
-  } else {
-    localStorage.removeItem(ACTIVE_USER_KEY);
-  }
-}
 
 // Generate a deterministic color from a string
 function stringToColor(str) {
@@ -52,135 +27,182 @@ function stringToColor(str) {
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return colors[Math.abs(hash) % colors.length];
+  return colors[abs(hash) % colors.length];
 }
 
+function abs(n) { return n < 0 ? -n : n; }
+
 function getInitials(name) {
-  return name
+  return name ? name
     .split(' ')
     .map((w) => w[0])
     .join('')
     .toUpperCase()
-    .slice(0, 2);
+    .slice(0, 2) : '??';
 }
 
 export function AuthProvider({ children }) {
-  const [users, setUsers] = useState(loadUsers);
-  const [activeUserId, setActiveUserId] = useState(loadActiveUserId);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const activeUser = activeUserId ? users[activeUserId] || null : null;
-
-  // Persist changes
-  useEffect(() => {
-    saveUsers(users);
-  }, [users]);
-
-  useEffect(() => {
-    saveActiveUserId(activeUserId);
-  }, [activeUserId]);
-
-  const register = useCallback((displayName, email, password) => {
-    // Check for duplicate email
-    const existing = Object.values(users).find(
-      (u) => u.email.toLowerCase() === email.toLowerCase()
-    );
-    if (existing) {
-      throw new Error('An account with this email already exists');
+  const checkAuthStatus = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { userId } = await getCurrentUser();
+      const attributes = await fetchUserAttributes();
+      
+      let mfaEnabled = false;
+      try {
+        const mfaPref = await fetchMFAPreference();
+        mfaEnabled = mfaPref.preferred === 'TOTP';
+      } catch (err) {
+        console.warn('Could not fetch MFA prefs:', err);
+      }
+      
+      const authUser = {
+        id: userId,
+        displayName: attributes.name || attributes.email.split('@')[0],
+        email: attributes.email,
+        avatar: stringToColor(attributes.name || attributes.email),
+        initials: getInitials(attributes.name || attributes.email.split('@')[0]),
+        mfaEnabled
+      };
+      
+      setUser(authUser);
+      return authUser;
+    } catch (err) {
+      setUser(null);
+      return null;
+    } finally {
+      setLoading(false);
     }
-
-    const id = 'user-' + crypto.randomUUID().split('-')[0];
-    const now = new Date().toISOString();
-
-    const newUser = {
-      id,
-      displayName: displayName.trim(),
-      email: email.trim().toLowerCase(),
-      passwordHash: btoa(password), // Simple encoding — not real security, just demo
-      avatar: stringToColor(displayName),
-      initials: getInitials(displayName.trim()),
-      createdAt: now,
-      lastLogin: now,
-    };
-
-    setUsers((prev) => ({ ...prev, [id]: newUser }));
-    setActiveUserId(id);
-
-    return newUser;
-  }, [users]);
-
-  const login = useCallback((email, password) => {
-    const user = Object.values(users).find(
-      (u) => u.email.toLowerCase() === email.toLowerCase()
-    );
-    if (!user) {
-      throw new Error('No account found with this email');
-    }
-    if (user.passwordHash !== btoa(password)) {
-      throw new Error('Incorrect password');
-    }
-
-    // Update last login
-    const updatedUser = { ...user, lastLogin: new Date().toISOString() };
-    setUsers((prev) => ({ ...prev, [user.id]: updatedUser }));
-    setActiveUserId(user.id);
-
-    return updatedUser;
-  }, [users]);
-
-  const logout = useCallback(() => {
-    setActiveUserId(null);
   }, []);
 
-  const switchUser = useCallback((userId) => {
-    if (users[userId]) {
-      const updatedUser = { ...users[userId], lastLogin: new Date().toISOString() };
-      setUsers((prev) => ({ ...prev, [userId]: updatedUser }));
-      setActiveUserId(userId);
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
+
+  const register = useCallback(async (displayName, email, password) => {
+    try {
+      const { userId } = await signUp({
+        username: email,
+        password,
+        options: {
+          userAttributes: {
+            email,
+            name: displayName,
+          },
+        }
+      });
+      return { userId };
+    } catch (err) {
+      console.error('Registration error:', err);
+      if (err.name === 'UsernameExistsException') {
+        throw new Error('An account with this email already exists');
+      }
+      throw new Error(err.message || 'Failed to register');
     }
-  }, [users]);
+  }, []);
 
-  const updateProfile = useCallback((updates) => {
-    if (!activeUserId) return;
-    setUsers((prev) => ({
-      ...prev,
-      [activeUserId]: {
-        ...prev[activeUserId],
-        ...updates,
-        initials: updates.displayName
-          ? getInitials(updates.displayName)
-          : prev[activeUserId].initials,
-        avatar: updates.displayName
-          ? stringToColor(updates.displayName)
-          : prev[activeUserId].avatar,
-      },
-    }));
-  }, [activeUserId]);
-
-  const deleteAccount = useCallback((userId) => {
-    setUsers((prev) => {
-      const copy = { ...prev };
-      delete copy[userId];
-      return copy;
-    });
-    if (activeUserId === userId) {
-      setActiveUserId(null);
+  const login = useCallback(async (email, password) => {
+    try {
+      const { isSignedIn, nextStep } = await signIn({ username: email, password });
+      if (isSignedIn) {
+        await checkAuthStatus();
+      }
+      return { isSignedIn, nextStep };
+    } catch (err) {
+      console.error('Login error:', err);
+      if (err.name === 'UserNotFoundException' || err.name === 'NotAuthorizedException') {
+        throw new Error('Invalid email or password');
+      }
+      if (err.name === 'UserNotConfirmedException') {
+        throw new Error('Please verify your email before logging in');
+      }
+      throw err; // Re-throw to allow component-level special handling
     }
-    // Clean up user-scoped data
-    localStorage.removeItem(`secureVault_history_${userId}`);
-  }, [activeUserId]);
+  }, [checkAuthStatus]);
 
-  const allUsers = Object.values(users);
+  const confirmMFA = useCallback(async (challengeResponse) => {
+    try {
+      const { isSignedIn, nextStep } = await confirmSignIn({
+        challengeResponse
+      });
+      if (isSignedIn) {
+        await checkAuthStatus();
+      }
+      return { isSignedIn, nextStep };
+    } catch (err) {
+      console.error('MFA Confirmation error:', err);
+      throw new Error(err.message || 'Verification failed');
+    }
+  }, [checkAuthStatus]);
+
+  const setupTOTPDevice = useCallback(async () => {
+    try {
+      const details = await setUpTOTP();
+      const { userId } = await getCurrentUser();
+      const appName = "SecureCloudStorage";
+      const uri = details.getSetupUri(appName, userId).toString();
+      return { secret: details.sharedSecret, uri };
+    } catch (err) {
+      console.error('TOTP Setup error:', err);
+      throw err;
+    }
+  }, []);
+
+  const verifyTOTP = useCallback(async (code) => {
+    try {
+      await verifyTOTPSetup({ code });
+      await updateMFAPreference({ totp: 'PREFERRED' });
+      await checkAuthStatus(); // Refresh user state
+    } catch (err) {
+      console.error('TOTP Verification error:', err);
+      throw err;
+    }
+  }, [checkAuthStatus]);
+
+  const disableMFA = useCallback(async () => {
+    try {
+      await updateMFAPreference({ totp: 'DISABLED' });
+      await checkAuthStatus(); // Refresh user state
+    } catch (err) {
+      console.error('Disable MFA error:', err);
+      throw err;
+    }
+  }, [checkAuthStatus]);
+
+  const logout = useCallback(async () => {
+    try {
+      await signOut();
+      setUser(null);
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  }, []);
+
+  const confirmRegistration = useCallback(async (email, code) => {
+    try {
+      await confirmSignUp({ username: email, confirmationCode: code });
+    } catch (err) {
+      console.error('Confirmation error:', err);
+      throw new Error(err.message || 'Failed to verify code');
+    }
+  }, []);
 
   const value = {
-    user: activeUser,
-    users: allUsers,
-    isAuthenticated: !!activeUser,
+    user,
+    loading,
+    isAuthenticated: !!user,
     register,
     login,
     logout,
-    switchUser,
-    updateProfile,
-    deleteAccount,
+    confirmRegistration,
+    confirmMFA,
+    setupTOTPDevice,
+    verifyTOTP,
+    disableMFA,
+    checkAuthStatus,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
